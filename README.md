@@ -43,7 +43,9 @@ If another app already uses the shortcut, Quick Notes shows a message when it la
 
 - Notes: `~/Library/Application Support/QuickNotes/notes.json`
 - Backup of the previous session: `notes.json.bak` in the same folder
-- If the notes file is ever damaged, it's moved aside as `notes.corrupt-<date>.json` rather than overwritten.
+- If the notes file is ever damaged, it's moved aside as `notes.corrupt-<date>.json` rather than overwritten, and the last backup is kept as `notes.corrupt-<date>.bak`. You'll see an alert with a "Show in Finder" button.
+- If a save fails (for example, the disk is full), a red banner appears in the window and saving keeps retrying. Quitting while notes are unsaved asks you first.
+- If the notes file can't be read at all, editing is turned off, so you can't type anything that can't be saved.
 
 ## Stop opening at login
 

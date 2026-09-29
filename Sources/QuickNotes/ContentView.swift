@@ -22,22 +22,16 @@ struct ContentView: View {
             .onDeleteCommand(perform: deleteSelected)
             .navigationSplitViewColumnWidth(min: 160, ideal: 200)
         } detail: {
-            if let note = controller.selectedNote {
-                TextEditor(text: bodyBinding(for: note.id))
-                    .font(.body)
-                    .padding(8)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .focused($editorFocused)
-                    // Fresh editor per note so undo history never crosses notes.
-                    .id(note.id)
-            } else {
-                ContentUnavailableView {
-                    Label("No Note Selected", systemImage: "note.text")
-                } description: {
-                    Text("Press \(HotKeyConfig.display) from any app to start a note.")
-                } actions: {
-                    Button("New Note") { controller.newNote() }
+            VStack(spacing: 0) {
+                if let problem = saveProblem {
+                    Label(problem, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                        .background(.red)
                 }
+                detail
             }
         }
         .toolbar {
@@ -46,6 +40,7 @@ struct ContentView: View {
                     Label("New Note", systemImage: "square.and.pencil")
                 }
                 .help("New Note (⌘N)")
+                .disabled(controller.isReadOnly)
 
                 Button(action: deleteSelected) {
                     Label("Delete", systemImage: "trash")
@@ -80,13 +75,49 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder
+    private var detail: some View {
+        if let note = controller.selectedNote {
+            TextEditor(text: bodyBinding(for: note.id))
+                .font(.body)
+                .padding(8)
+                .background(Color(nsColor: .textBackgroundColor))
+                .focused($editorFocused)
+                .disabled(controller.isReadOnly)
+                // Fresh editor per note so undo history never crosses notes.
+                .id(note.id)
+        } else {
+            ContentUnavailableView {
+                Label("No Note Selected", systemImage: "note.text")
+            } description: {
+                Text(controller.isReadOnly
+                     ? "Editing is off because your notes file couldn't be read."
+                     : "Press \(HotKeyConfig.display) from any app to start a note.")
+            } actions: {
+                Button("New Note") { controller.newNote() }
+                    .disabled(controller.isReadOnly)
+            }
+        }
+    }
+
+    /// Shown as a banner whenever typing might not reach disk.
+    private var saveProblem: String? {
+        if controller.isReadOnly {
+            return "Notes file couldn't be read — editing is off to protect it."
+        }
+        if let error = controller.saveError {
+            return "Not saved: \(error) Retrying…"
+        }
+        return nil
+    }
+
     private var selection: Binding<UUID?> {
         Binding(get: { controller.selectedID }, set: { controller.select($0) })
     }
 
     private func bodyBinding(for id: UUID) -> Binding<String> {
         Binding(
-            get: { controller.selectedNote?.body ?? "" },
+            get: { controller.note(withID: id)?.body ?? "" },
             set: { controller.updateBody($0, for: id) }
         )
     }

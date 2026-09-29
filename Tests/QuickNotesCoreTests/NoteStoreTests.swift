@@ -84,6 +84,46 @@ import Testing
         #expect(backup == old)
     }
 
+    @Test func failedBackupDoesNotBlockSaveOrLoseOldBackup() throws {
+        let url = makeTempNotesURL()
+        try NoteStore(fileURL: url).save([Note(body: "older")])
+        try NoteStore(fileURL: url).save([Note(body: "old")]) // .bak now holds "older"
+        // Write-only notes file: the backup copy can't read it, but the atomic save still works.
+        try FileManager.default.setAttributes([.posixPermissions: 0o200], ofItemAtPath: url.path)
+
+        let store = NoteStore(fileURL: url)
+        try store.save([Note(body: "new")])
+
+        // Atomic writes keep the original permissions; restore read access to verify.
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+        #expect(try NoteStore(fileURL: url).load().map(\.body) == ["new"])
+        let backup = try JSONDecoder().decode([Note].self, from: Data(contentsOf: store.backupURL))
+        #expect(backup.map(\.body) == ["older"])
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: url.deletingLastPathComponent().path)
+            .filter { $0.hasPrefix(".notes.bak-") }
+        #expect(leftovers.isEmpty)
+    }
+
+    @Test func corruptFileKeepsLastBackupAside() throws {
+        let url = makeTempNotesURL()
+        let good = [Note(body: "good")]
+        try NoteStore(fileURL: url).save(good)
+        let second = NoteStore(fileURL: url)
+        try second.save(good) // creates .bak holding "good"
+        try Data("garbage".utf8).write(to: url)
+
+        let store = NoteStore(fileURL: url)
+        #expect(try store.load().isEmpty)
+        #expect(store.movedAsideURL != nil)
+
+        let folder = url.deletingLastPathComponent()
+        let keptBackup = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            .filter { $0.hasPrefix("notes.corrupt-") && $0.hasSuffix(".bak") }
+        #expect(keptBackup.count == 1)
+        let kept = try JSONDecoder().decode([Note].self, from: Data(contentsOf: folder.appendingPathComponent(keptBackup[0])))
+        #expect(kept == good)
+    }
+
     // Covers AE4.
     @Test func notesSurviveNewStoreInstance() throws {
         let url = makeTempNotesURL()

@@ -17,12 +17,20 @@ public final class NotesController {
     /// Incremented whenever the editor should take keyboard focus.
     public private(set) var focusRequest = 0
     public private(set) var loadError: Error?
+    /// Set when the notes file couldn't be read. Editing is disabled so nothing
+    /// is typed that can't be saved.
+    public let isReadOnly: Bool
+    /// Where an undecodable notes file was moved at launch, if that happened.
+    public let recoveredFileURL: URL?
+    /// Description of the most recent save failure; nil once a save succeeds.
+    public private(set) var saveError: String?
+    /// True when edits exist that haven't reached disk.
+    public private(set) var hasUnsavedChanges = false
 
     @ObservationIgnored private let store: NoteStore
     @ObservationIgnored private let scheduleSave: SaveScheduler
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var editGeneration = 0
-    @ObservationIgnored private var hasPendingSave = false
     @ObservationIgnored var savesPerformed = 0
 
     public init(
@@ -38,6 +46,8 @@ public final class NotesController {
         } catch {
             loadError = error
         }
+        isReadOnly = store.isReadOnly
+        recoveredFileURL = store.movedAsideURL
         selectedID = mostRecentlyEditedID
     }
 
@@ -57,6 +67,7 @@ public final class NotesController {
 
     /// Hotkey and New button: reuse the newest blank note if one exists, otherwise create one.
     public func newNote() {
+        guard !isReadOnly else { return }
         if let blank = notes.first(where: \.isBlank) {
             select(blank.id)
         } else {
@@ -77,14 +88,14 @@ public final class NotesController {
     }
 
     public func updateBody(_ body: String, for id: UUID) {
-        guard let index = index(of: id), notes[index].body != body else { return }
+        guard !isReadOnly, let index = index(of: id), notes[index].body != body else { return }
         notes[index].body = body
         notes[index].modified = now()
         scheduleDebouncedSave()
     }
 
     public func delete(_ id: UUID) {
-        guard let index = index(of: id) else { return }
+        guard !isReadOnly, let index = index(of: id) else { return }
         notes.remove(at: index)
         if selectedID == id {
             selectedID = notes.indices.contains(index) ? notes[index].id : notes.last?.id
@@ -102,7 +113,7 @@ public final class NotesController {
 
     /// Saves immediately if anything is unsaved.
     public func flush() {
-        if hasPendingSave { saveNow() }
+        if hasUnsavedChanges { saveNow() }
     }
 
     // MARK: Private
@@ -115,7 +126,7 @@ public final class NotesController {
         notes.firstIndex { $0.id == id }
     }
 
-    private func note(withID id: UUID) -> Note? {
+    public func note(withID id: UUID) -> Note? {
         index(of: id).map { notes[$0] }
     }
 
@@ -127,7 +138,7 @@ public final class NotesController {
     }
 
     private func scheduleDebouncedSave() {
-        hasPendingSave = true
+        hasUnsavedChanges = true
         editGeneration += 1
         let generation = editGeneration
         scheduleSave { [weak self] in
@@ -139,12 +150,14 @@ public final class NotesController {
     private func saveNow() {
         do {
             try store.save(notes.filter { !$0.isBlank })
-            hasPendingSave = false
+            hasUnsavedChanges = false
+            saveError = nil
             savesPerformed += 1
         } catch {
-            // Keep the pending flag so the next edit or flush retries.
-            hasPendingSave = true
+            saveError = error.localizedDescription
             NSLog("QuickNotes: save failed: \(error)")
+            // Keep retrying on the debounce timer instead of waiting for another keystroke.
+            scheduleDebouncedSave()
         }
     }
 }

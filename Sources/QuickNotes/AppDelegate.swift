@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if controller.loadError != nil {
             showLoadErrorAlert()
+        } else if let recovered = controller.recoveredFileURL {
+            showRecoveredFileAlert(recovered)
         }
 
         hotKey = HotKey(keyCode: HotKeyConfig.keyCode, modifiers: HotKeyConfig.modifiers) { [weak self] in
@@ -45,8 +47,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.flush()
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         controller.flush()
+        guard controller.hasUnsavedChanges else { return .terminateNow }
+
+        let alert = NSAlert()
+        alert.messageText = "Your latest notes couldn't be saved"
+        alert.informativeText = """
+            \(controller.saveError ?? "The notes file couldn't be written.") \
+            If you quit now, unsaved text will be lost. Copy anything important first.
+            """
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "Don't Quit")
+        alert.addButton(withTitle: "Quit Anyway")
+        return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
     }
 
     // MARK: Menu actions
@@ -74,10 +88,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.messageText = "Couldn't read your notes"
         alert.informativeText = """
             The notes file at \(NoteStore.defaultFileURL.path) couldn't be read, \
-            so saving is turned off to protect it. Check the file's permissions, then relaunch.
+            so editing is turned off to protect it. Check the file's permissions, then relaunch.
             """
         alert.alertStyle = .warning
         alert.runModal()
+    }
+
+    private func showRecoveredFileAlert(_ url: URL) {
+        let alert = NSAlert()
+        alert.messageText = "Your notes file was damaged"
+        alert.informativeText = """
+            It couldn't be opened, so Quick Notes set it aside and started fresh. \
+            The damaged file and your last backup are kept in the same folder.
+            """
+        alert.addButton(withTitle: "Show in Finder")
+        alert.addButton(withTitle: "OK")
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
     }
 }
 

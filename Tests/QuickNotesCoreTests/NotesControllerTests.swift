@@ -171,6 +171,74 @@ private func makeController(
         #expect(try store.load().isEmpty)
     }
 
+    @Test func hidingSavesPendingEditsWithoutTimer() throws {
+        let (c, store, scheduler) = try makeController()
+        c.newNote()
+        c.updateBody("typed", for: c.selectedID!)
+        c.windowWillHide()
+        #expect(try store.load().map(\.body) == ["typed"])
+        #expect(!c.hasUnsavedChanges)
+        let saves = c.savesPerformed
+        scheduler.fireAll()
+        c.flush()
+        #expect(c.savesPerformed == saves)
+    }
+
+    @Test func noOpUpdatesScheduleNothing() throws {
+        let (c, _, scheduler) = try makeController(seed: [Note(body: "same")])
+        c.updateBody("same", for: c.notes[0].id)
+        c.updateBody("x", for: UUID())
+        #expect(scheduler.pending.isEmpty)
+        #expect(!c.hasUnsavedChanges)
+    }
+
+    @Test func saveFailureIsReportedAndRetried() throws {
+        let (c, store, scheduler) = try makeController(seed: [Note(body: "a")])
+        let folder = store.fileURL.deletingLastPathComponent().path
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder) }
+
+        c.updateBody("edited", for: c.notes[0].id)
+        c.flush()
+        #expect(c.saveError != nil)
+        #expect(c.hasUnsavedChanges)
+        #expect(!scheduler.pending.isEmpty, "failure should schedule a retry")
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder)
+        scheduler.fireAll()
+        #expect(c.saveError == nil)
+        #expect(!c.hasUnsavedChanges)
+        #expect(try store.load().map(\.body) == ["edited"])
+    }
+
+    @Test func unreadableFileMakesControllerReadOnly() throws {
+        let url = makeTempNotesURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let original = Data("[]".utf8)
+        try original.write(to: url)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: url.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path) }
+
+        let c = NotesController(store: NoteStore(fileURL: url), scheduleSave: ManualScheduler().schedule)
+        #expect(c.isReadOnly)
+        #expect(c.loadError != nil)
+        c.newNote()
+        #expect(c.notes.isEmpty)
+        c.flush()
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+        #expect(try Data(contentsOf: url) == original)
+    }
+
+    @Test func corruptFileIsReportedToController() throws {
+        let url = makeTempNotesURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("garbage".utf8).write(to: url)
+        let c = NotesController(store: NoteStore(fileURL: url), scheduleSave: ManualScheduler().schedule)
+        #expect(!c.isReadOnly)
+        #expect(c.recoveredFileURL?.lastPathComponent.hasPrefix("notes.corrupt-") == true)
+    }
+
     @Test func editingDoesNotReorder() throws {
         let seed = (1...3).map { Note(body: "n\($0)", created: Date(timeIntervalSince1970: TimeInterval($0))) }
         let (c, _, _) = try makeController(seed: seed)
