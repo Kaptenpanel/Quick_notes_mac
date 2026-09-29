@@ -11,7 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Read first: the launch Apple Event is only current here, and a modal alert would replace it.
         let launchedAtLogin = LoginItem.launchedAtLogin
         NSApp.mainMenu = MainMenu.build()
-        AppFonts.register()
         windowController = MainWindowController(controller: controller)
 
         if controller.loadError != nil {

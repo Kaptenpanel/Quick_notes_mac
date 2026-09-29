@@ -17,8 +17,6 @@ rm -rf "${BUNDLE}"
 mkdir -p "${BUNDLE}/Contents/MacOS" "${BUNDLE}/Contents/Resources"
 cp "$(swift build -c release --show-bin-path)/${APP_NAME}" "${BUNDLE}/Contents/MacOS/${APP_NAME}"
 cp Resources/Info.plist "${BUNDLE}/Contents/Info.plist"
-cp Resources/AppIcon.icns "${BUNDLE}/Contents/Resources/AppIcon.icns"
-cp -R Resources/Fonts "${BUNDLE}/Contents/Resources/Fonts"
 
 echo "==> Signing (ad-hoc, for this Mac only)"
 codesign --force --sign - "${BUNDLE}"

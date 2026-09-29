@@ -32,20 +32,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         self.controller = controller
 
         let hosting = NSHostingController(rootView: ContentView(controller: controller, pin: pin))
-        // The SwiftUI header draws the title; nothing is bridged into the titlebar.
-        hosting.sceneBridgingOptions = []
+        hosting.sceneBridgingOptions = [.toolbars, .title]
 
         let window = NSWindow(contentViewController: hosting)
-        // Still used by Mission Control and the Window menu.
         window.title = "Quick Notes"
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isReleasedWhenClosed = false
-        // On every desktop, always; pin only decides whether it floats.
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        window.contentMinSize = NSSize(width: 520, height: 320)
-        window.setContentSize(NSSize(width: 720, height: 460))
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        window.setContentSize(NSSize(width: 640, height: 420))
         window.center()
         window.setFrameAutosaveName("QuickNotesMainWindow")
 
