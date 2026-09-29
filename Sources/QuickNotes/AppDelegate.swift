@@ -6,6 +6,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let controller = NotesController(store: NoteStore(fileURL: NoteStore.defaultFileURL))
     private var windowController: MainWindowController!
     private var hotKey: HotKey?
+    private var launchedAtLogin = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        launchedAtLogin = LoginItem.launchedAtLogin
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.build(target: self)
@@ -19,8 +24,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.newNote(nil)
         }
 
-        if controller.notes.isEmpty { controller.newNote() }
-        windowController.show()
+        LoginItem.registerOnFirstLaunch()
+
+        // At login, stay out of the way until the hotkey or Dock icon is used.
+        if !launchedAtLogin {
+            if controller.notes.isEmpty { controller.newNote() }
+            windowController.show()
+        }
 
         if hotKey == nil { showHotKeyUnavailableAlert() }
     }
