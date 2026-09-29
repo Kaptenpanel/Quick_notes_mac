@@ -6,13 +6,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let controller = NotesController(store: NoteStore(fileURL: NoteStore.defaultFileURL))
     private var windowController: MainWindowController!
     private var hotKey: HotKey?
-    private var launchedAtLogin = false
-
-    func applicationWillFinishLaunching(_ notification: Notification) {
-        launchedAtLogin = LoginItem.launchedAtLogin
-    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Read first: the launch Apple Event is only current here, and a modal alert would replace it.
+        let launchedAtLogin = LoginItem.launchedAtLogin
         NSApp.mainMenu = MainMenu.build()
         windowController = MainWindowController(controller: controller)
 

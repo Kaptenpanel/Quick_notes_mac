@@ -20,7 +20,8 @@ enum LoginItem {
     }
 
     /// True when macOS opened the app at login rather than the user opening it.
-    /// Must be read during launch, while the launch Apple Event is current.
+    /// Must be read at the start of applicationDidFinishLaunching, while the launch
+    /// Apple Event is current (it is still nil in applicationWillFinishLaunching).
     @MainActor
     static var launchedAtLogin: Bool {
         guard let event = NSAppleEventManager.shared().currentAppleEvent,
