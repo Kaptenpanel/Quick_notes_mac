@@ -1,8 +1,12 @@
+# Build output
 .build/
 .swiftpm/
 build/
+
+# Not needed to build (kept locally only)
+docs/
+Tests/
+.claude/
+
+# macOS
 .DS_Store
-.claude/worktrees/
-.docs/
-.Resources/
-.Tests/

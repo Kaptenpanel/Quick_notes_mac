@@ -10,9 +10,5 @@ let package = Package(
             name: "QuickNotes",
             dependencies: ["QuickNotesCore"]
         ),
-        .testTarget(
-            name: "QuickNotesCoreTests",
-            dependencies: ["QuickNotesCore"]
-        ),
     ]
 )

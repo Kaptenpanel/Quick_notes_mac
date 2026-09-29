@@ -56,7 +56,6 @@ If Quick Notes doesn't appear in Login Items after the first launch, add `/Appli
 ## Development
 
 ```bash
-swift test    # core logic tests
 swift build   # debug build
 ```
 
