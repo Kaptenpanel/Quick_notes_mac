@@ -25,8 +25,8 @@ struct ContentView: View {
             if let note = controller.selectedNote {
                 TextEditor(text: bodyBinding(for: note.id))
                     .font(.body)
-                    .scrollContentBackground(.hidden)
                     .padding(8)
+                    .background(Color(nsColor: .textBackgroundColor))
                     .focused($editorFocused)
                     // Fresh editor per note so undo history never crosses notes.
                     .id(note.id)
