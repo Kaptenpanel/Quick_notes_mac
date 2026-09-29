@@ -37,4 +37,12 @@ public struct Note: Codable, Equatable, Identifiable, Sendable {
     public var displayTitle: String {
         title ?? Self.placeholderTitle
     }
+
+    /// Search: true when the body contains the query, ignoring case and accents.
+    /// A blank query matches every note.
+    public func matches(_ query: String) -> Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        return body.range(of: trimmed, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+    }
 }
