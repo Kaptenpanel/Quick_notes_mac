@@ -1,7 +1,7 @@
 ---
 title: "feat: Quick Notes native Mac app"
 type: feat
-status: active
+status: completed
 date: 2026-09-29
 origin: docs/brainstorms/2026-09-29-quick-notes-requirements.md
 ---
