@@ -1,0 +1,3 @@
+import QuickNotesCore
+
+print("QuickNotes")
