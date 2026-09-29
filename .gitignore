@@ -3,3 +3,6 @@
 build/
 .DS_Store
 .claude/worktrees/
+.docs/
+.Resources/
+.Tests/
