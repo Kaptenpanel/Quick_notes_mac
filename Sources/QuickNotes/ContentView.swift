@@ -12,14 +12,14 @@ struct ContentView: View {
         NavigationSplitView {
             List(selection: selection) {
                 ForEach(controller.notes) { note in
-                    NoteRow(title: controller.title(for: note), modified: note.modified)
+                    NoteRow(title: note.displayTitle, modified: note.modified)
                         .tag(note.id)
                         .contextMenu {
                             Button("Delete", role: .destructive) { requestDelete(note) }
                         }
                 }
             }
-            .onDeleteCommand { if let note = controller.selectedNote { requestDelete(note) } }
+            .onDeleteCommand(perform: deleteSelected)
             .navigationSplitViewColumnWidth(min: 160, ideal: 200)
         } detail: {
             if let note = controller.selectedNote {
@@ -47,7 +47,7 @@ struct ContentView: View {
                 }
                 .help("New Note (⌘N)")
 
-                Button { if let note = controller.selectedNote { requestDelete(note) } } label: {
+                Button(action: deleteSelected) {
                     Label("Delete", systemImage: "trash")
                 }
                 .help("Delete Note")
@@ -76,7 +76,7 @@ struct ContentView: View {
             Button("Delete", role: .destructive) { controller.delete(note.id) }
             Button("Cancel", role: .cancel) {}
         } message: { note in
-            Text("\"\(controller.title(for: note))\" will be permanently deleted.")
+            Text("\"\(note.displayTitle)\" will be permanently deleted.")
         }
     }
 
@@ -86,9 +86,13 @@ struct ContentView: View {
 
     private func bodyBinding(for id: UUID) -> Binding<String> {
         Binding(
-            get: { controller.notes.first { $0.id == id }?.body ?? "" },
+            get: { controller.selectedNote?.body ?? "" },
             set: { controller.updateBody($0, for: id) }
         )
+    }
+
+    private func deleteSelected() {
+        if let note = controller.selectedNote { requestDelete(note) }
     }
 
     /// Notes with text ask first; blank notes go immediately.

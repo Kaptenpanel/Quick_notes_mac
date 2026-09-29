@@ -2,16 +2,9 @@ import Foundation
 import Testing
 @testable import QuickNotesCore
 
-private func makeTempDir() throws -> URL {
-    let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("QuickNotesTests-\(UUID().uuidString)", isDirectory: true)
-    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    return dir
-}
-
 @Suite struct NoteStoreTests {
     @Test func saveThenLoadRoundTrips() throws {
-        let url = try makeTempDir().appendingPathComponent("notes.json")
+        let url = makeTempNotesURL()
         let store = NoteStore(fileURL: url)
         let notes = [
             Note(body: "one"),
@@ -24,21 +17,20 @@ private func makeTempDir() throws -> URL {
     }
 
     @Test func missingFileLoadsEmptyWithoutCreatingFile() throws {
-        let url = try makeTempDir().appendingPathComponent("notes.json")
+        let url = makeTempNotesURL()
         #expect(try NoteStore(fileURL: url).load().isEmpty)
         #expect(!FileManager.default.fileExists(atPath: url.path))
     }
 
     @Test func saveCreatesMissingParentDirectory() throws {
-        let url = try makeTempDir()
-            .appendingPathComponent("nested/deeper", isDirectory: true)
-            .appendingPathComponent("notes.json")
+        let url = makeTempNotesURL().deletingLastPathComponent()
+            .appendingPathComponent("nested/deeper/notes.json")
         try NoteStore(fileURL: url).save([Note(body: "x")])
         #expect(FileManager.default.fileExists(atPath: url.path))
     }
 
     @Test func unusualTextRoundTrips() throws {
-        let url = try makeTempDir().appendingPathComponent("notes.json")
+        let url = makeTempNotesURL()
         let long = String(repeating: "lorem ipsum ", count: 20_000)
         let notes = [Note(body: "emoji 🐸🎉\n\n\ttabs\r\nCRLF"), Note(body: long)]
         try NoteStore(fileURL: url).save(notes)
@@ -46,8 +38,9 @@ private func makeTempDir() throws -> URL {
     }
 
     @Test func corruptFileIsMovedAsideAndPreserved() throws {
-        let dir = try makeTempDir()
-        let url = dir.appendingPathComponent("notes.json")
+        let url = makeTempNotesURL()
+        let dir = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let garbage = Data("{not json".utf8)
         try garbage.write(to: url)
 
@@ -61,23 +54,24 @@ private func makeTempDir() throws -> URL {
     }
 
     @Test func unreadableFileMakesStoreReadOnly() throws {
-        let url = try makeTempDir().appendingPathComponent("notes.json")
+        let url = makeTempNotesURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let original = Data("[]".utf8)
         try original.write(to: url)
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: url.path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path) }
 
         let store = NoteStore(fileURL: url)
-        #expect(throws: NoteStore.LoadError.self) { try store.load() }
+        #expect(throws: (any Error).self) { try store.load() }
         #expect(store.isReadOnly)
 
-        try store.save([Note(body: "must not be written")])
+        #expect(throws: NoteStore.ReadOnlyError.self) { try store.save([Note(body: "must not be written")]) }
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
         #expect(try Data(contentsOf: url) == original)
     }
 
     @Test func firstSaveBacksUpExistingFile() throws {
-        let url = try makeTempDir().appendingPathComponent("notes.json")
+        let url = makeTempNotesURL()
         let old = [Note(body: "old")]
         try NoteStore(fileURL: url).save(old)
 
@@ -92,7 +86,7 @@ private func makeTempDir() throws -> URL {
 
     // Covers AE4.
     @Test func notesSurviveNewStoreInstance() throws {
-        let url = try makeTempDir().appendingPathComponent("notes.json")
+        let url = makeTempNotesURL()
         try NoteStore(fileURL: url).save([Note(body: "typed before quit")])
         #expect(try NoteStore(fileURL: url).load().map(\.body) == ["typed before quit"])
     }
@@ -105,6 +99,7 @@ private func makeTempDir() throws -> URL {
         #expect(Note(body: "\n\n  todo").title == "todo")
         #expect(Note(body: "").title == nil)
         #expect(Note(body: "  \n\t").title == nil)
+        #expect(Note(body: "").displayTitle == Note.placeholderTitle)
     }
 
     @Test func blankDetection() {

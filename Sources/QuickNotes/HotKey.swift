@@ -14,12 +14,13 @@ enum HotKeyConfig {
 @MainActor
 final class HotKey {
     private let action: () -> Void
-    private var hotKeyRef: EventHotKeyRef?
-    private var handlerRef: EventHandlerRef?
 
     /// Returns nil when the combo can't be registered (usually taken by another app).
+    /// The registration lives for the rest of the process; there's no unregister.
     init?(keyCode: UInt32, modifiers: UInt32, action: @escaping () -> Void) {
         self.action = action
+        var handlerRef: EventHandlerRef?
+        var hotKeyRef: EventHotKeyRef?
 
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),

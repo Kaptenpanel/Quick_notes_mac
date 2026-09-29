@@ -5,17 +5,15 @@ import Foundation
 /// Safety rules:
 /// - Missing file loads as an empty list.
 /// - Undecodable file is moved aside (never overwritten) and loads as empty.
-/// - Any other read error leaves the file alone and makes the store read-only
+/// - Any other load failure leaves the file alone and makes the store read-only
 ///   for its lifetime, so a bad load can never be saved over real notes.
 /// - The first save of each store instance copies the existing file to `.bak`.
 public final class NoteStore {
-    public enum LoadError: Error {
-        case unreadable(underlying: Error)
-    }
+    public struct ReadOnlyError: Error {}
 
     public let fileURL: URL
     public private(set) var isReadOnly = false
-    private var didBackUp = false
+    private var didPrepareFirstSave = false
     private let fileManager = FileManager.default
 
     public init(fileURL: URL) {
@@ -23,9 +21,7 @@ public final class NoteStore {
     }
 
     public static var defaultFileURL: URL {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return support.appendingPathComponent("QuickNotes", isDirectory: true)
-            .appendingPathComponent("notes.json")
+        URL.applicationSupportDirectory.appending(path: "QuickNotes/notes.json")
     }
 
     public var backupURL: URL {
@@ -34,37 +30,32 @@ public final class NoteStore {
 
     public func load() throws -> [Note] {
         guard fileManager.fileExists(atPath: fileURL.path) else { return [] }
-
-        let data: Data
         do {
-            data = try Data(contentsOf: fileURL)
+            let data = try Data(contentsOf: fileURL)
+            guard let notes = try? JSONDecoder().decode([Note].self, from: data) else {
+                try moveCorruptFileAside()
+                return []
+            }
+            return notes
         } catch {
             isReadOnly = true
-            throw LoadError.unreadable(underlying: error)
-        }
-
-        do {
-            return try JSONDecoder().decode([Note].self, from: data)
-        } catch {
-            try moveCorruptFileAside()
-            return []
+            throw error
         }
     }
 
     public func save(_ notes: [Note]) throws {
-        guard !isReadOnly else { return }
+        guard !isReadOnly else { throw ReadOnlyError() }
 
-        try fileManager.createDirectory(
-            at: fileURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-
-        if !didBackUp {
+        if !didPrepareFirstSave {
+            try fileManager.createDirectory(
+                at: fileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
             if fileManager.fileExists(atPath: fileURL.path) {
                 try? fileManager.removeItem(at: backupURL)
                 try fileManager.copyItem(at: fileURL, to: backupURL)
             }
-            didBackUp = true
+            didPrepareFirstSave = true
         }
 
         let encoder = JSONEncoder()
@@ -73,8 +64,7 @@ public final class NoteStore {
     }
 
     private func moveCorruptFileAside() throws {
-        let stamp = ISO8601DateFormatter().string(from: Date())
-            .replacingOccurrences(of: ":", with: "-")
+        let stamp = Date.now.formatted(.iso8601.timeSeparator(.omitted))
         let aside = fileURL.deletingLastPathComponent()
             .appendingPathComponent("notes.corrupt-\(stamp).json")
         try fileManager.moveItem(at: fileURL, to: aside)

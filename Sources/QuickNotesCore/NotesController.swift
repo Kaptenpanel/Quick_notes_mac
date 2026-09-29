@@ -5,6 +5,9 @@ import Observation
 public typealias SaveScheduler = @MainActor (_ fire: @escaping @MainActor () -> Void) -> Void
 
 /// Owns the note list, selection, and every note behavior. UI-free.
+///
+/// Blank notes are scratch space: they're reused by `newNote`, discarded when
+/// the user leaves them, and never written to disk.
 @MainActor
 @Observable
 public final class NotesController {
@@ -22,8 +25,6 @@ public final class NotesController {
     @ObservationIgnored private var hasPendingSave = false
     @ObservationIgnored var savesPerformed = 0
 
-    public static let defaultDebounce: TimeInterval = 0.5
-
     public init(
         store: NoteStore,
         scheduleSave: @escaping SaveScheduler = NotesController.debouncedScheduler(),
@@ -37,10 +38,10 @@ public final class NotesController {
         } catch {
             loadError = error
         }
-        selectedID = notes.max { $0.modified < $1.modified }?.id
+        selectedID = mostRecentlyEditedID
     }
 
-    public static func debouncedScheduler(delay: TimeInterval = defaultDebounce) -> SaveScheduler {
+    public static func debouncedScheduler(delay: TimeInterval = 0.5) -> SaveScheduler {
         { fire in
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 MainActor.assumeIsolated { fire() }
@@ -48,17 +49,8 @@ public final class NotesController {
         }
     }
 
-    // MARK: Reading
-
     public var selectedNote: Note? {
-        guard let selectedID else { return nil }
-        return notes.first { $0.id == selectedID }
-    }
-
-    public static let placeholderTitle = "New Note"
-
-    public func title(for note: Note) -> String {
-        note.title ?? Self.placeholderTitle
+        selectedID.flatMap(note(withID:))
     }
 
     // MARK: Actions
@@ -72,7 +64,6 @@ public final class NotesController {
             let note = Note(created: stamp, modified: stamp)
             notes.insert(note, at: 0)
             selectedID = note.id
-            scheduleDebouncedSave()
         }
         focusRequest += 1
     }
@@ -86,32 +77,25 @@ public final class NotesController {
     }
 
     public func updateBody(_ body: String, for id: UUID) {
-        guard let index = notes.firstIndex(where: { $0.id == id }),
-              notes[index].body != body else { return }
+        guard let index = index(of: id), notes[index].body != body else { return }
         notes[index].body = body
         notes[index].modified = now()
         scheduleDebouncedSave()
     }
 
     public func delete(_ id: UUID) {
-        guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = index(of: id) else { return }
         notes.remove(at: index)
         if selectedID == id {
-            if notes.indices.contains(index) {
-                selectedID = notes[index].id
-            } else {
-                selectedID = notes.last?.id
-            }
+            selectedID = notes.indices.contains(index) ? notes[index].id : notes.last?.id
         }
         saveNow()
     }
 
     /// Called before the window hides: drop a blank selected note and persist.
     public func windowWillHide() {
-        if let selectedID, selectedNote?.isBlank == true {
-            notes.removeAll { $0.id == selectedID }
-            self.selectedID = notes.max { $0.modified < $1.modified }?.id
-            hasPendingSave = true
+        if let selectedID, discardIfBlank(selectedID) {
+            self.selectedID = mostRecentlyEditedID
         }
         flush()
     }
@@ -123,10 +107,23 @@ public final class NotesController {
 
     // MARK: Private
 
-    private func discardIfBlank(_ id: UUID) {
-        guard let index = notes.firstIndex(where: { $0.id == id }), notes[index].isBlank else { return }
+    private var mostRecentlyEditedID: UUID? {
+        notes.max { $0.modified < $1.modified }?.id
+    }
+
+    private func index(of id: UUID) -> Int? {
+        notes.firstIndex { $0.id == id }
+    }
+
+    private func note(withID id: UUID) -> Note? {
+        index(of: id).map { notes[$0] }
+    }
+
+    @discardableResult
+    private func discardIfBlank(_ id: UUID) -> Bool {
+        guard let index = index(of: id), notes[index].isBlank else { return false }
         notes.remove(at: index)
-        scheduleDebouncedSave()
+        return true
     }
 
     private func scheduleDebouncedSave() {
@@ -140,9 +137,9 @@ public final class NotesController {
     }
 
     private func saveNow() {
-        hasPendingSave = false
         do {
-            try store.save(notes)
+            try store.save(notes.filter { !$0.isBlank })
+            hasPendingSave = false
             savesPerformed += 1
         } catch {
             // Keep the pending flag so the next edit or flush retries.

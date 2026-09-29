@@ -7,6 +7,7 @@ cd "$(dirname "$0")/.."
 APP_NAME="QuickNotes"
 BUNDLE="build/${APP_NAME}.app"
 INSTALL_PATH="/Applications/${APP_NAME}.app"
+BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' Resources/Info.plist)"
 
 echo "==> Building release binary"
 swift build -c release
@@ -26,7 +27,7 @@ if [[ "${1:-}" == "--no-install" ]]; then
 fi
 
 echo "==> Quitting running copy, if any"
-osascript -e "tell application id \"local.quicknotes\" to quit" 2>/dev/null || true
+osascript -e "tell application id \"${BUNDLE_ID}\" to quit" 2>/dev/null || true
 sleep 1
 
 echo "==> Installing to ${INSTALL_PATH}"

@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.mainMenu = MainMenu.build(target: self)
+        NSApp.mainMenu = MainMenu.build()
         windowController = MainWindowController(controller: controller)
 
         if controller.loadError != nil {
@@ -42,6 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func applicationWillResignActive(_ notification: Notification) {
+        controller.flush()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -82,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 enum MainMenu {
     @MainActor
-    static func build(target: AppDelegate) -> NSMenu {
+    static func build() -> NSMenu {
         let main = NSMenu()
 
         let appMenu = NSMenu()
@@ -95,8 +99,8 @@ enum MainMenu {
         main.addItem(submenu: appMenu, title: "Quick Notes")
 
         let fileMenu = NSMenu(title: "File")
-        let newItem = fileMenu.addItem(withTitle: "New Note", action: #selector(AppDelegate.newNote(_:)), keyEquivalent: "n")
-        newItem.target = target
+        // No target: AppDelegate receives it through the responder chain.
+        fileMenu.addItem(withTitle: "New Note", action: #selector(AppDelegate.newNote(_:)), keyEquivalent: "n")
         fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         main.addItem(submenu: fileMenu, title: "File")
 

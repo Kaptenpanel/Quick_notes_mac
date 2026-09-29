@@ -13,16 +13,28 @@ public struct Note: Codable, Equatable, Identifiable, Sendable {
         self.modified = modified ?? created
     }
 
+    public static let placeholderTitle = "New Note"
+
     /// True when the note has no visible text.
     public var isBlank: Bool {
-        body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        body.allSatisfy(\.isWhitespace)
     }
 
     /// First non-empty line, trimmed; nil when the note is blank.
     public var title: String? {
-        body.split(whereSeparator: \.isNewline)
-            .lazy
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .first { !$0.isEmpty }
+        var result: String?
+        body.enumerateLines { line, stop in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty {
+                result = trimmed
+                stop = true
+            }
+        }
+        return result
+    }
+
+    /// Title for display in the list; placeholder when blank.
+    public var displayTitle: String {
+        title ?? Self.placeholderTitle
     }
 }

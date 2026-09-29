@@ -27,18 +27,16 @@ private func makeController(
     seed: [Note] = [],
     scheduler: ManualScheduler = ManualScheduler()
 ) throws -> (NotesController, NoteStore, ManualScheduler) {
-    let url = FileManager.default.temporaryDirectory
-        .appendingPathComponent("QuickNotesTests-\(UUID().uuidString)")
-        .appendingPathComponent("notes.json")
+    let url = makeTempNotesURL()
     let store = NoteStore(fileURL: url)
     if !seed.isEmpty { try store.save(seed) }
     let clock = Clock()
     let controller = NotesController(
-        store: NoteStore(fileURL: url),
+        store: store,
         scheduleSave: scheduler.schedule,
         now: clock.now
     )
-    return (controller, NoteStore(fileURL: url), scheduler)
+    return (controller, store, scheduler)
 }
 
 @MainActor
@@ -50,14 +48,6 @@ private func makeController(
         c.newNote()
         c.updateBody("second", for: c.selectedID!)
         #expect(c.notes.map(\.body) == ["second", "first"])
-    }
-
-    // Covers AE5.
-    @Test func titlesUseFirstLineOrPlaceholder() throws {
-        let (c, _, _) = try makeController()
-        #expect(c.title(for: Note(body: "groceries\nmilk")) == "groceries")
-        #expect(c.title(for: Note(body: "")) == NotesController.placeholderTitle)
-        #expect(c.title(for: Note(body: "\n\n  todo")) == "todo")
     }
 
     @Test func selectingShowsThatNote() throws {
@@ -171,6 +161,14 @@ private func makeController(
         scheduler.fireAll()
         #expect(c.savesPerformed == before + 1)
         #expect(try store.load().map(\.body) == ["hello"])
+    }
+
+    @Test func blankNotesAreNeverSaved() throws {
+        let (c, store, _) = try makeController(seed: [Note(body: "keep")])
+        c.newNote()
+        c.delete(c.notes[1].id)
+        #expect(c.selectedNote?.isBlank == true)
+        #expect(try store.load().isEmpty)
     }
 
     @Test func editingDoesNotReorder() throws {
