@@ -4,14 +4,16 @@ import QuickNotesCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let controller = NotesController(store: NoteStore(fileURL: NoteStore.defaultFileURL))
-    private var windowController: MainWindowController!
+    /// Created on first show, so a hidden launch at login never builds the window or its views.
+    private lazy var windowController = MainWindowController(controller: controller)
     private var hotKey: HotKey?
+    private var captureHotKey: HotKey?
+    private var isCapturing = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Read first: the launch Apple Event is only current here, and a modal alert would replace it.
         let launchedAtLogin = LoginItem.launchedAtLogin
         NSApp.mainMenu = MainMenu.build()
-        windowController = MainWindowController(controller: controller)
 
         if controller.loadError != nil {
             showLoadErrorAlert()
@@ -22,6 +24,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotKey = HotKey(keyCode: HotKeyConfig.keyCode, modifiers: HotKeyConfig.modifiers) { [weak self] in
             self?.newNote(nil)
         }
+        captureHotKey = HotKey(
+            keyCode: CaptureHotKeyConfig.keyCode, modifiers: CaptureHotKeyConfig.modifiers
+        ) { [weak self] in
+            self?.captureText(nil)
+        }
+        // Not worth an alert: the File menu item still works while Quick Notes is active.
+        if captureHotKey == nil { NSLog("QuickNotes: \(CaptureHotKeyConfig.display) is unavailable") }
 
         LoginItem.registerOnFirstLaunch()
 
@@ -70,6 +79,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowController.show()
     }
 
+    /// Select part of the screen; its text becomes a new note.
+    @objc func captureText(_ sender: Any?) {
+        guard !controller.isReadOnly, !isCapturing else { return }
+        isCapturing = true
+        Task {
+            defer { isCapturing = false }
+            let image: CGImage
+            do {
+                guard let captured = try await ScreenCapture.captureRegion() else { return } // Esc
+                image = captured
+            } catch ScreenCapture.Failure.permissionDenied {
+                showScreenRecordingAlert()
+                return
+            } catch {
+                NSLog("QuickNotes: screen capture failed: \(error)")
+                NSSound.beep()
+                return
+            }
+            do {
+                let text = try await TextRecognizer.recognizeText(in: image)
+                controller.newNote(body: text)
+                windowController.show()
+            } catch {
+                NSLog("QuickNotes: text recognition failed: \(error)")
+                NSSound.beep()
+            }
+        }
+    }
+
     // MARK: Alerts
 
     private func showHotKeyUnavailableAlert() {
@@ -81,6 +119,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             You can still use the window and ⌘N.
             """
         alert.runModal()
+    }
+
+    private func showScreenRecordingAlert() {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Quick Notes needs Screen Recording permission"
+        alert.informativeText = """
+            To read text from the screen, turn on Quick Notes in System Settings ▸ \
+            Privacy & Security ▸ Screen & System Audio Recording, then quit and reopen Quick Notes.
+            """
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        // Adds Quick Notes to that list (and asks once) so there's a switch to turn on.
+        CGRequestScreenCaptureAccess()
+        let pane = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+        if let url = URL(string: pane) { NSWorkspace.shared.open(url) }
     }
 
     private func showLoadErrorAlert() {
@@ -126,6 +181,9 @@ enum MainMenu {
         let fileMenu = NSMenu(title: "File")
         // No target: AppDelegate receives it through the responder chain.
         fileMenu.addItem(withTitle: "New Note", action: #selector(AppDelegate.newNote(_:)), keyEquivalent: "n")
+        fileMenu.addItem(withTitle: "Capture Text from Screen",
+                         action: #selector(AppDelegate.captureText(_:)), keyEquivalent: "s")
+            .keyEquivalentModifierMask = [.command, .shift]
         fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         main.addItem(submenu: fileMenu, title: "File")
 
@@ -142,6 +200,9 @@ enum MainMenu {
 
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "Keep on Top",
+                           action: #selector(MainWindowController.toggleKeepOnTop(_:)), keyEquivalent: "t")
+            .keyEquivalentModifierMask = [.command, .shift]
         main.addItem(submenu: windowMenu, title: "Window")
         NSApp.windowsMenu = windowMenu
 

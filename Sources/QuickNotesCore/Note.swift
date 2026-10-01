@@ -5,12 +5,31 @@ public struct Note: Codable, Equatable, Identifiable, Sendable {
     public var body: String
     public let created: Date
     public var modified: Date
+    /// Pinned notes list above the rest.
+    public var pinned: Bool
 
-    public init(id: UUID = UUID(), body: String = "", created: Date = Date(), modified: Date? = nil) {
+    public init(
+        id: UUID = UUID(), body: String = "", created: Date = Date(), modified: Date? = nil, pinned: Bool = false
+    ) {
         self.id = id
         self.body = body
         self.created = created
         self.modified = modified ?? created
+        self.pinned = pinned
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, body, created, modified, pinned
+    }
+
+    // Notes saved before pinning existed have no `pinned` key; they must still load.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        body = try container.decode(String.self, forKey: .body)
+        created = try container.decode(Date.self, forKey: .created)
+        modified = try container.decode(Date.self, forKey: .modified)
+        pinned = try container.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
     }
 
     public static let placeholderTitle = "New Note"

@@ -3,7 +3,7 @@
 A floating quick-notes window for macOS. Press **⌃⌥N** (Control-Option-N) from any app and a new note opens, ready to type.
 
 - Your notes are listed on the left, and the editor is on the right.
-- The window stays on top of other windows. Click the pin button in the toolbar to turn that off.
+- Click **Pin** above the editor to keep the window on top of other apps; click **Unpin** to stop. To pin a note to the top of the list, right-click it.
 - Notes save automatically as you type.
 - Closing the window only hides it. The app keeps running, so the shortcut still works. Use ⌘Q to quit.
 - Quick Notes opens automatically when you log in, hidden until you press the shortcut.
@@ -23,6 +23,7 @@ This builds the app, signs it for this Mac, installs it to `/Applications/QuickN
 | Shortcut | Action |
 |----------|--------|
 | ⌃⌥N | New note from any app (reuses an empty note if one exists) |
+| ⇧⌘S | Drag across part of the screen from any app; its text becomes a new note. Esc cancels. Needs Screen Recording permission, which you may have to turn on again after rebuilding |
 | ⌘N | New note (while the window is active) |
 | ⌘W | Hide the window |
 | ⌘M | Minimize |
@@ -56,7 +57,17 @@ If Quick Notes doesn't appear in Login Items after the first launch, add `/Appli
 ## Development
 
 ```bash
-swift build   # debug build
+swift build                              # debug build
+./scripts/build-app.sh --no-install      # build build/QuickNotes.app without installing
 ```
+
+### Keeping builds fast
+
+Most of a slow (1–2 minute) build is the compiler re-caching Apple's frameworks, not compiling this app. `build-app.sh` keeps that cache in `~/Library/Caches/QuickNotes/ModuleCache`, outside `.build`, so after the first build:
+
+- Don't wipe it. Deleting `.build` is fine: the next build takes about 15 seconds instead of a full cold build. Delete the cache folder only if you want to reset it. Don't copy or move it, because it only works at its original path.
+- Expect one slow build after adding a new framework import (for example `import Vision`) or after an Xcode update. That's a one-time cost.
+- Plain `swift build`, `swift run` and the editor's indexing each keep their own separate cache, so they pay the same cost again. Let editor indexing finish before running `build-app.sh`, and use the script for app builds.
+- Other heavy work on the Mac, such as a virtual machine, can easily double build times.
 
 Quit the installed app before running a development build with `swift run`. Otherwise both copies write the same notes file and compete for the shortcut.

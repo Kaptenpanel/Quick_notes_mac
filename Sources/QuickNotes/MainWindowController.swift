@@ -3,11 +3,12 @@ import Observation
 import QuickNotesCore
 import SwiftUI
 
-/// Floating on/off, persisted across launches. Defaults to on.
+/// Floating on/off, persisted across launches. Defaults to off.
 @MainActor
 @Observable
 final class PinState {
-    private static let key = "windowPinned"
+    // Renamed from "windowPinned" (which defaulted to on) so everyone starts unpinned.
+    private static let key = "windowFloating"
 
     var isPinned: Bool {
         didSet {
@@ -19,12 +20,12 @@ final class PinState {
     @ObservationIgnored var onChange: ((Bool) -> Void)?
 
     init() {
-        isPinned = UserDefaults.standard.object(forKey: Self.key) as? Bool ?? true
+        isPinned = UserDefaults.standard.bool(forKey: Self.key)
     }
 }
 
 @MainActor
-final class MainWindowController: NSWindowController, NSWindowDelegate {
+final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
     private let controller: NotesController
     private let pin = PinState()
 
@@ -32,14 +33,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         self.controller = controller
 
         let hosting = NSHostingController(rootView: ContentView(controller: controller, pin: pin))
-        hosting.sceneBridgingOptions = [.toolbars, .title]
+        hosting.sceneBridgingOptions = []
 
         let window = NSWindow(contentViewController: hosting)
         window.title = "Quick Notes"
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        // The design draws its own centered title; keep only the traffic lights.
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = Palette.windowBackground
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
-        window.setContentSize(NSSize(width: 640, height: 420))
+        window.contentMinSize = NSSize(width: 560, height: 320)
+        window.setContentSize(NSSize(width: 820, height: 540))
         window.center()
         window.setFrameAutosaveName("QuickNotesMainWindow")
 
@@ -63,6 +69,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func applyPin(_ pinned: Bool) {
         window?.level = pinned ? .floating : .normal
+    }
+
+    // Window ▸ Keep on Top. Reached through the responder chain.
+    @objc func toggleKeepOnTop(_ sender: Any?) {
+        pin.isPinned.toggle()
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(toggleKeepOnTop(_:)) {
+            menuItem.state = pin.isPinned ? .on : .off
+        }
+        return true
     }
 
     // Close hides; the app keeps running so the hotkey still works.

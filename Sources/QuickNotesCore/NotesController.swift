@@ -11,7 +11,7 @@ public typealias SaveScheduler = @MainActor (_ fire: @escaping @MainActor () -> 
 @MainActor
 @Observable
 public final class NotesController {
-    /// Newest-created first.
+    /// Pinned first, then newest-created first.
     public private(set) var notes: [Note] = []
     public private(set) var selectedID: UUID?
     /// Incremented whenever the editor should take keyboard focus.
@@ -42,7 +42,7 @@ public final class NotesController {
         self.scheduleSave = scheduleSave
         self.now = now
         do {
-            notes = try store.load().sorted { $0.created > $1.created }
+            notes = try store.load().sorted(by: Self.listOrder)
         } catch {
             loadError = error
         }
@@ -73,10 +73,17 @@ public final class NotesController {
         } else {
             let stamp = now()
             let note = Note(created: stamp, modified: stamp)
-            notes.insert(note, at: 0)
+            notes.insert(note, at: notes.firstIndex { !$0.pinned } ?? notes.endIndex)
             selectedID = note.id
         }
         focusRequest += 1
+    }
+
+    /// Screen capture: a new note that starts with `body` (reusing a blank note if one exists).
+    public func newNote(body: String) {
+        guard !isReadOnly else { return }
+        newNote()
+        if let selectedID { updateBody(body, for: selectedID) }
     }
 
     /// Selecting away from a blank note discards it.
@@ -92,6 +99,14 @@ public final class NotesController {
         notes[index].body = body
         notes[index].modified = now()
         scheduleDebouncedSave()
+    }
+
+    /// Moves the note into or out of the pinned group at the top of the list.
+    public func togglePin(_ id: UUID) {
+        guard !isReadOnly, let index = index(of: id) else { return }
+        notes[index].pinned.toggle()
+        notes.sort(by: Self.listOrder)
+        saveNow()
     }
 
     public func delete(_ id: UUID) {
@@ -117,6 +132,10 @@ public final class NotesController {
     }
 
     // MARK: Private
+
+    private static func listOrder(_ a: Note, _ b: Note) -> Bool {
+        a.pinned != b.pinned ? a.pinned : a.created > b.created
+    }
 
     private var mostRecentlyEditedID: UUID? {
         notes.max { $0.modified < $1.modified }?.id
